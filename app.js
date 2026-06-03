@@ -35,6 +35,8 @@ const dashboardRoutes = require("./routes/dashboardRoutes");     // dashboard ro
 const roleRequestRoutes = require("./routes/roleRequestRoutes");  // role request routes
 const profileRoutes = require("./routes/profileRoutes");  // profile completion check routes
 const masterDataRoutes = require("./routes/masterDataRoutes.js");  // master data routes
+const studentFeeRoutes = require("./routes/studentFeeRoutes");  // student fee structure routes
+const feePaymentRoutes = require("./routes/feePaymentRoutes");
 
 const app = express();
 
@@ -100,7 +102,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/role-requests", roleRequestRoutes);
 app.use("/api/users/profile", profileRoutes);
 app.use("/api/master", masterDataRoutes);
-
+app.use("/api/student-fees", studentFeeRoutes);
+app.use("/api/fee-payments", feePaymentRoutes);
 // 404 Handler
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
