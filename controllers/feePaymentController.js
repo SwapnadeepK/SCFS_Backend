@@ -95,47 +95,44 @@ const getApprovals =
 /* =========================================
    APPROVE / REJECT PAYMENT
 ========================================= */
-const approve =
-  async (req, res) => {
-    try {
+const approve = async (req, res) => {
+  try {
 
-      const feeId =
-        req.params.id;
+    const feeId = req.params.id;
 
-      const {
-        status_id,
-      } = req.body;
+    const status_id =
+      req.body?.status_id;
 
-      if (!status_id) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "status_id is required",
-        });
-      }
-
-      await approvePayment(
-        feeId,
-        status_id
-      );
-
-      return res.json({
-        success: true,
-        message:
-          "Payment updated successfully",
-      });
-
-    } catch (err) {
-
-      console.error(err);
-
-      return res.status(500).json({
+    if (!status_id) {
+      return res.status(400).json({
         success: false,
-        message:
-          "Failed to update payment",
+        message: "status_id is required",
       });
     }
-  };
+
+    await approvePayment(
+      feeId,
+      Number(status_id)
+    );
+
+    return res.json({
+      success: true,
+      message:
+        "Payment updated successfully",
+    });
+
+  } catch (err) {
+
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        err.message ||
+        "Failed to update payment",
+    });
+  }
+};
 
 module.exports = {
   createPayment,

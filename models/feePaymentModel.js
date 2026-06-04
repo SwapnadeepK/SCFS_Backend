@@ -1,127 +1,161 @@
-const pool = require("../config/db");
+const { pool } = require("../config/db");
 
 /* =========================================
    CREATE PAYMENT REQUEST
 ========================================= */
-const createPaymentRequest =
-  async (data) => {
+const createPaymentRequest = async (data) => {
 
-    const {
-      student_id,
-      fee_structure_id,
-      transaction_id,
-      payment_method,
-    } = data;
+  const {
+    student_id,
+    fee_structure_id,
+    transaction_id,
+    payment_method,
+  } = data;
 
-    /* =====================================
-       GET FEE STRUCTURE
-    ===================================== */
-    const [feeRows] =
-      await pool.execute(
-        `
-        SELECT *
-        FROM fee_structures
-        WHERE id = ?
-        `,
-        [fee_structure_id]
-      );
+  /* =====================================
+     GET FEE STRUCTURE
+  ===================================== */
+  const [feeRows] = await pool.execute(
+    `
+    SELECT *
+    FROM fee_structures
+    WHERE id = ?
+    `,
+    [fee_structure_id]
+  );
 
-    if (feeRows.length === 0) {
-      throw new Error(
-        "Fee structure not found"
-      );
-    }
+  if (feeRows.length === 0) {
+    throw new Error(
+      "Fee structure not found"
+    );
+  }
 
-    const feeStructure =
-      feeRows[0];
+  const feeStructure = feeRows[0];
 
-    /* =====================================
-       CREATE FEES ENTRY
-    ===================================== */
+  /* =====================================
+     FIND EXISTING FEE ENTRY
+  ===================================== */
+  const [existingFeeRows] =
+    await pool.execute(
+      `
+      SELECT
+        id,
+        fee_status_id,
+        approval_status_id
+      FROM fees
+      WHERE student_id = ?
+        AND fee_structure_id = ?
+      LIMIT 1
+      `,
+      [
+        student_id,
+        fee_structure_id,
+      ]
+    );
 
-    const generatedFeeId =
-      `FEE-${Date.now()}`;
+  if (
+    existingFeeRows.length === 0
+  ) {
+    throw new Error(
+      "Fee record not found for student"
+    );
+  }
 
-    const [feeResult] =
-      await pool.execute(
-        `
-        INSERT INTO fees (
-          uuid,
-          fees_id,
-          student_id,
-          fee_structure_id,
-          academic_year,
-          fee_status_id,
-          approval_status_id
-        )
-        VALUES (
-          UUID_TO_BIN(UUID()),
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
-        `,
-        [
-          generatedFeeId,
-          student_id,
-          fee_structure_id,
-          feeStructure.academic_year,
+  const feeId =
+    existingFeeRows[0].id;
 
-          /* =================================
-             STATUS IDS
-          ================================= */
+  /* =====================================
+     PREVENT DUPLICATE PAYMENT
+  ===================================== */
+  const [existingTransactions] =
+    await pool.execute(
+      `
+      SELECT id
+      FROM fee_transactions
+      WHERE fee_id = ?
+      LIMIT 1
+      `,
+      [feeId]
+    );
 
-          12, // PAYMENT_PENDING
-          5,  // APPROVAL_PENDING
-        ]
-      );
+  if (
+    existingTransactions.length > 0
+  ) {
+    throw new Error(
+      "Payment already submitted for this fee"
+    );
+  }
 
-    const feeId =
-      feeResult.insertId;
+  /* =====================================
+     PAYMENT STATUS ID
+  ===================================== */
+  const PAYMENT_PENDING_STATUS_ID = 12;
 
-    /* =====================================
-       CREATE TRANSACTION
-    ===================================== */
+  /* =====================================
+     CREATE TRANSACTION
+  ===================================== */
+  const [transactionResult] =
+    await pool.execute(
+      `
+      INSERT INTO fee_transactions (
+        uuid,
+        fee_id,
+        student_id,
+        transaction_ref,
+        amount,
+        payment_method,
+        payment_status_id,
+        paid_at
+      )
+      VALUES (
+        UUID_TO_BIN(UUID()),
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        NOW()
+      )
+      `,
+      [
+        feeId,
+        student_id,
+        transaction_id,
+        feeStructure.amount,
+        payment_method,
+        PAYMENT_PENDING_STATUS_ID,
+      ]
+    );
 
-    const [transactionResult] =
-      await pool.execute(
-        `
-        INSERT INTO fee_transactions (
-          fee_id,
-          transaction_ref,
-          amount,
-          payment_method,
-          payment_date,
-          status_id
-        )
-        VALUES (
-          ?,
-          ?,
-          ?,
-          ?,
-          NOW(),
-          ?
-        )
-        `,
-        [
-          feeId,
-          transaction_id,
-          feeStructure.amount,
-          payment_method,
+  /* =====================================
+     UPDATE FEES STATUS
+  ===================================== */
+  const FEE_UNPAID_STATUS_ID = 9;
+  const APPROVAL_PENDING_STATUS_ID = 5;
 
-          5, // Pending Approval
-        ]
-      );
+  await pool.execute(
+    `
+    UPDATE fees
+    SET
+      fee_status_id = ?,
+      approval_status_id = ?
+    WHERE id = ?
+    `,
+    [
+      FEE_UNPAID_STATUS_ID,
+      APPROVAL_PENDING_STATUS_ID,
+      feeId,
+    ]
+  );
 
-    return {
-      fee_id: feeId,
-      transaction_id:
-        transactionResult.insertId,
-    };
+  return {
+    success: true,
+    fee_id: feeId,
+    transaction_id:
+      transactionResult.insertId,
   };
+};
 
 /* =========================================
    GET PENDING APPROVALS
@@ -135,7 +169,7 @@ const getPendingPayments =
         ft.transaction_ref,
         ft.amount,
         ft.payment_method,
-        ft.payment_date,
+        ft.paid_at,
 
         f.fees_id,
         f.academic_year,
@@ -143,10 +177,9 @@ const getPendingPayments =
         fs.amount AS fee_amount,
 
         u.email,
-
         up.full_name,
 
-        sm.status_value
+        sm.status_value AS payment_status
 
       FROM fee_transactions ft
 
@@ -163,11 +196,12 @@ const getPendingPayments =
         ON up.user_id = u.id
 
       LEFT JOIN status_master sm
-        ON sm.id = ft.status_id
+        ON sm.id = ft.payment_status_id
 
-      WHERE sm.status_value = 'Pending'
+      WHERE sm.status_type = 'PAYMENT_STATUS'
+        AND sm.status_value = 'PENDING'
 
-      ORDER BY ft.payment_date DESC
+      ORDER BY ft.paid_at DESC
     `;
 
     const [rows] =
@@ -191,7 +225,7 @@ const approvePayment =
     await pool.execute(
       `
       UPDATE fee_transactions
-      SET status_id = ?
+      SET payment_status_id = ?
       WHERE id = ?
       `,
       [statusId, transactionId]
@@ -224,12 +258,11 @@ const approvePayment =
     /* =====================================
        UPDATE FEES TABLE
     ===================================== */
-
-    let feeStatusId = 12;
+    let feeStatusId = 9; // UNPAID
 
     // APPROVED
-    if (statusId === 6) {
-      feeStatusId = 13;
+    if (statusId === 13) {
+      feeStatusId = 8; // PAID
     }
 
     await pool.execute(
@@ -242,7 +275,7 @@ const approvePayment =
       `,
       [
         feeStatusId,
-        statusId,
+        statusId === 13 ? 6 : 5,
         feeId,
       ]
     );
