@@ -271,8 +271,7 @@ const getMyFeesService =
 
     if (!existingFee.length) {
 
-      const feesId =
-        `FEE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const feesId = `DUP${Date.now().toString().slice(-7)}`;
 
       await pool.query(
         `
