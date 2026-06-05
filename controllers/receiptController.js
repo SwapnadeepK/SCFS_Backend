@@ -220,7 +220,7 @@ const downloadReceipt = async (
     );
 
     doc.text(
-      `₹${data.amount}`,
+      `Rs. ${data.amount}`,
       430,
       startY + 38
     );
