@@ -46,21 +46,40 @@ if (existing) {
 const getPendingRoleRequests = async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT 
-  rr.id AS request_id,
-  u.id,
-  u.email,
-  r.role_name,
-  r2.role_name AS requested_role,
-  rr.requested_role_id,
-  sm.status_value AS status
-FROM users u
-JOIN roles r ON r.id = u.role_id
-LEFT JOIN role_requests rr ON rr.user_id = u.id
-LEFT JOIN roles r2 ON r2.id = rr.requested_role_id
-LEFT JOIN status_master sm ON sm.id = rr.approval_status_id
-WHERE r.role_name = 'UNVERIFIED'
-   OR sm.status_value = 'PENDING'
+      SELECT
+    rr.id AS request_id,
+    rr.created_at,
+
+    u.id,
+    u.email,
+
+    up.full_name,
+
+    r.role_name,
+    r2.role_name AS requested_role,
+
+    rr.requested_role_id,
+
+    sm.status_value AS status
+
+FROM role_requests rr
+
+JOIN users u
+    ON u.id = rr.user_id
+
+LEFT JOIN user_profiles up
+    ON up.user_id = u.id
+
+JOIN roles r
+    ON r.id = u.role_id
+
+LEFT JOIN roles r2
+    ON r2.id = rr.requested_role_id
+
+LEFT JOIN status_master sm
+    ON sm.id = rr.approval_status_id
+
+ORDER BY rr.created_at DESC;
     `);
 
     res.json({

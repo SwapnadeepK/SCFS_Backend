@@ -1,4 +1,7 @@
 const { pool } = require("../config/db.js");
+const {
+  getDepartmentsByCollegeService,
+} = require("../services/departmentService");
 
 const createDepartment = async (req, res) => {
     const { uuid, code, name, college_id } = req.body;
@@ -27,8 +30,36 @@ const deleteDepartment = async (req, res) => {
     res.json({ message: "Deleted" });
 };
 
+const getDepartmentsByCollege = async (
+  req,
+  res
+) => {
+  try {
+    const { collegeId } = req.params;
+
+    const data =
+      await getDepartmentsByCollegeService(
+        collegeId
+      );
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      success: false,
+      message:
+        "Failed to fetch departments",
+    });
+  }
+};
+
 module.exports = {
     createDepartment,
     updateDepartment,
-    deleteDepartment
+    deleteDepartment,
+    getDepartmentsByCollege
 };
